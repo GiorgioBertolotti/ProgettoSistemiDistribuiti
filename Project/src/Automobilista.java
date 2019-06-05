@@ -1,13 +1,20 @@
-
 public class Automobilista {
-	
 	private Automobile auto;
-	
-	synchronized int parcheggia() {
-		
-		Parcheggiatore p = (Parcheggiatore) (Thread.currentThread());
-		
-	}
-	
 
+	public Automobilista(Automobile auto) {
+		super();
+		this.auto = auto;
+	}
+
+	public Automobile getAuto() {
+		return auto;
+	}
+
+	public int parcheggia(Parcheggio parcheggio) {
+		return parcheggio.depositaAuto(this.auto);
+	}
+
+	public void ritira(Parcheggio parcheggio, int ticket) {
+		parcheggio.ritiraAuto(ticket);
+	}
 }

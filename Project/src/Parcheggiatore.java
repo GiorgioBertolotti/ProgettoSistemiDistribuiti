@@ -1,37 +1,31 @@
 
-public class Parcheggiatore extends Thread{
-	
-	 private int identity;
-	 private boolean stopRequested = false;
-	 private Parcheggio parcheggio;
-	 private Automobilista automobilista;
-	 
-	  public Parcheggiatore(int identity,  Parcheggio parcheggio, Automobilista automobilista) {
+public class Parcheggiatore extends Thread {
+	private Parcheggio parcheggio;
+	private Automobile automobile;
+	private boolean depositare;
+	private int ticketNo;
+
+	public Parcheggiatore(Parcheggio parcheggio, Automobile automobile, boolean depositare, int ticketNo) {
 		super();
-		this.identity = identity;
 		this.parcheggio = parcheggio;
-		this.automobilista = automobilista;
+		this.automobile = automobile;
+		this.depositare = depositare;
+		this.ticketNo = ticketNo;
 	}
 
-     public void run() {
-	        while (!stopRequested) {
-	            try {
-	                sleep(50000);
-	                parcheggio.ritira();
-	                sleep(50000);
-	                parcheggio.restituisci();
-	                
-	            } catch (InterruptedException e) {
+	public int getTicketNo() {
+		return ticketNo;
+	}
 
-	            }
-	        }
-     }
-     
-     public void stopRequested() {
-         stopRequested = true;
-     }
-     public int getAutomobilista(){
-         return automobilista;
-     }
+	public Automobile getAutomobile() {
+		return automobile;
+	}
 
+	public void run() {
+		if (depositare) {
+			parcheggio.deposita();
+		} else {
+			parcheggio.ritira();
+		}
+	}
 }
