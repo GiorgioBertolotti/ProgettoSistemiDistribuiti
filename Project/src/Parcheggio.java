@@ -17,8 +17,8 @@ public class Parcheggio {
 	public void deposita() {
 		Parcheggiatore p = (Parcheggiatore) (Thread.currentThread());
 		synchronized (this) {
-			System.out.println("Aspetto a parcheggiare " + p.getAutomobile().targa);
 			while (parcheggiatoriAttivi == maxParcheggiatori) {
+				System.out.println("Aspetto a parcheggiare " + p.getAutomobile().targa);
 				try {
 					wait();
 				} catch (InterruptedException e1) {
@@ -46,8 +46,8 @@ public class Parcheggio {
 	public void ritira() {
 		Parcheggiatore p = (Parcheggiatore) (Thread.currentThread());
 		synchronized (this) {
-			System.out.println("Aspetto a ritirare il ticket " + p.getTicketNo());
 			while (parcheggiatoriAttivi == maxParcheggiatori) {
+				System.out.println("Aspetto a ritirare il ticket " + p.getTicketNo());
 				try {
 					wait();
 				} catch (InterruptedException e1) {
@@ -66,7 +66,7 @@ public class Parcheggio {
 			if (autoParcheggiate.containsKey(p.getTicketNo())) {
 				Automobile auto = autoParcheggiate.get(p.getTicketNo());
 				autoParcheggiate.remove(p.getTicketNo());
-				System.out.println("Ritirata l'auto " + auto.targa);
+				System.out.println("Ritirata l'auto con ticket " + p.getTicketNo() + ", la targa è " + auto.targa);
 			} else
 				System.out
 						.println("L'auto con ticket " + p.getTicketNo() + " non è parcheggiata in questo parcheggio.");

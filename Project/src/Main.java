@@ -13,13 +13,15 @@ public class Main {
 				@Override
 				public void run() {
 					int ticket = automobilista.parcheggia(parcheggio);
-					try {
-						Random rand = new Random();
-						Thread.sleep(20000 + rand.nextInt(10000));
-					} catch (InterruptedException e) {
-						e.printStackTrace();
+					if (ticket != -1) {
+						try {
+							Random rand = new Random();
+							Thread.sleep(20000 + rand.nextInt(10000));
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+						automobilista.ritira(parcheggio, ticket);
 					}
-					automobilista.ritira(parcheggio, ticket);
 				}
 			});
 			t.start();
