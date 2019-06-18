@@ -1,31 +1,38 @@
+public class Parcheggiatore {
+	private boolean libero;
 
-public class Parcheggiatore extends Thread {
-	private Parcheggio parcheggio;
-	private Automobile automobile;
-	private boolean depositare;
-	private int ticketNo;
-
-	public Parcheggiatore(Parcheggio parcheggio, Automobile automobile, boolean depositare, int ticketNo) {
+	public Parcheggiatore() {
 		super();
-		this.parcheggio = parcheggio;
-		this.automobile = automobile;
-		this.depositare = depositare;
-		this.ticketNo = ticketNo;
+		this.libero = true;
 	}
 
-	public int getTicketNo() {
-		return ticketNo;
+	public boolean isLibero() {
+		return libero;
 	}
 
-	public Automobile getAutomobile() {
-		return automobile;
-	}
-
-	public void run() {
-		if (depositare) {
-			parcheggio.deposita();
-		} else {
-			parcheggio.ritira();
+	synchronized public void parcheggia() {
+		Automobilista a = (Automobilista) (Thread.currentThread());
+		this.libero = false;
+		System.out.println("I'm parking " + a.getAuto().targa + ".");
+		try {
+			Thread.sleep(5000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
+		this.libero = true;
+		System.out.println(a.getAuto().targa + " parked.");
+	}
+
+	synchronized public void ritira() {
+		Automobilista a = (Automobilista) (Thread.currentThread());
+		this.libero = false;
+		System.out.println("I'm picking up " + a.getAuto().targa + ".");
+		try {
+			Thread.sleep(5000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		this.libero = true;
+		System.out.println(a.getAuto().targa + " picked up.");
 	}
 }
