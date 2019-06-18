@@ -1,4 +1,7 @@
-public class Automobile {
+import java.io.Serializable;
+
+public class Automobile implements Serializable {
+	private static final long serialVersionUID = 3L;
 	String targa;
 
 	public Automobile(String targa) {

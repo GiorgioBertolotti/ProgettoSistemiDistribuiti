@@ -8,14 +8,13 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.sun.corba.se.spi.orbutil.fsm.Input;
-
 public class Server {
 
+	@SuppressWarnings("resource")
 	public static void main(String[] args) {
-		List<StatoParcheggio> parcheggi = new ArrayList<>();
+		List<Parcheggio> parcheggi = new ArrayList<>();
 		for (int i = 0; i < 5; i++) {
-			parcheggi.add(new StatoParcheggio(new Parcheggio(i, 5, 10), true));
+			parcheggi.add(new Parcheggio(i, 1, 5));
 		}
 		ServerSocket server = null;
 		try {
@@ -25,6 +24,7 @@ public class Server {
 		}
 		if (server == null)
 			System.exit(-1);
+		System.out.println("Server started...");
 		while (true) {
 			try {
 				Socket socket = server.accept();
@@ -35,51 +35,71 @@ public class Server {
 				int bytesRead = 0;
 				bytesRead = in.read(byteReceived);
 				messageString += new String(byteReceived, 0, bytesRead);
+				System.out.println("Received: " + messageString);
 				if (messageString.equals("richiestaParcheggi")) {
 					ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
 					List<Parcheggio> daRitornare = new ArrayList<>();
-					for (StatoParcheggio stato : parcheggi) {
-						if (stato.stato)
-							daRitornare.add(stato.parcheggio);
+					for (Parcheggio parcheggio : parcheggi) {
+						if (parcheggio.postiLiberi() > 0)
+							daRitornare.add(parcheggio);
 					}
 					objectOutput.writeObject(daRitornare);
 					objectOutput.flush();
-					objectOutput.close();
-				} else if (messageString.contains("parcheggioOccupato")) {
-					PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
-					int idParcheggio = Integer.parseInt(messageString.substring(18));
-					boolean trovato = false;
-					for (StatoParcheggio stato : parcheggi) {
-						if (stato.parcheggio.getIdParcheggio() == idParcheggio) {
-							if (stato.parcheggio.occupaPosto() == 0)
-								stato.stato = false;
-							stato.parcheggio.incrementaTicket();
-							trovato = true;
+				} else if (messageString.contains("statoParcheggiatore")) {
+					try {
+						String[] splitted = messageString.split("-");
+						int idParcheggio = Integer.parseInt(splitted[1]);
+						int indexParcheggiatore = Integer.parseInt(splitted[2]);
+						boolean libero = splitted[3] == "1";
+						for (Parcheggio parcheggio : parcheggi) {
+							if (parcheggio.getIdParcheggio() == idParcheggio
+									&& parcheggio.getNumParcheggiatori() > indexParcheggiatore) {
+								parcheggio.parcheggiatori[indexParcheggiatore].setLibero(libero);
+							}
 						}
+						PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
+						stringOutput.write("ricevuto");
+						stringOutput.flush();
+					} catch (Exception e) {
+						System.out.println("Command not valid.");
 					}
-					if (trovato)
-						stringOutput.write("Occupato un posto nel parcheggio " + idParcheggio + ".");
-					else
-						stringOutput.write("Parcheggio con id " + idParcheggio + " non trovato.");
-					stringOutput.flush();
-					stringOutput.close();
-				} else if (messageString.contains("parcheggioDisponibile")) {
-					PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
-					int idParcheggio = Integer.parseInt(messageString.substring(21));
-					boolean trovato = false;
-					for (StatoParcheggio stato : parcheggi) {
-						if (stato.parcheggio.getIdParcheggio() == idParcheggio) {
-							if (stato.parcheggio.liberaPosto() > 0)
-								stato.stato = true;
-							trovato = true;
+				} else if (messageString.contains("getStatoParcheggiatori")) {
+					try {
+						String[] splitted = messageString.split("-");
+						int idParcheggio = Integer.parseInt(splitted[1]);
+						Parcheggiatore[] nuovoStato = null;
+						for (Parcheggio parcheggio : parcheggi) {
+							if (parcheggio.getIdParcheggio() == idParcheggio) {
+								nuovoStato = parcheggio.parcheggiatori;
+							}
 						}
+						if (nuovoStato != null) {
+							ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
+							objectOutput.writeObject(nuovoStato);
+							objectOutput.flush();
+						} else {
+							System.out.println("Command not valid.");
+						}
+					} catch (Exception e) {
+						System.out.println("Command not valid.");
 					}
-					if (trovato)
-						stringOutput.write("Liberato un posto nel parcheggio " + idParcheggio + ".");
-					else
-						stringOutput.write("Parcheggio con id " + idParcheggio + " non trovato.");
-					stringOutput.flush();
-					stringOutput.close();
+				} else if (messageString.equals("aggiornaStatoParcheggio")) {
+					try {
+						ObjectInputStream input = new ObjectInputStream(socket.getInputStream());
+						Object received = input.readObject();
+						if (received instanceof Parcheggio) {
+							Parcheggio nuovoStato = (Parcheggio) received;
+							for (int i = 0; i < parcheggi.size(); i++) {
+								if (parcheggi.get(i).getIdParcheggio() == nuovoStato.getIdParcheggio()) {
+									parcheggi.remove(i);
+									parcheggi.add(nuovoStato);
+									break;
+								}
+							}
+						}
+					} catch (Exception e) {
+						System.out.println("Command not recognized.");
+					}
 				}
 				in.close();
 				socket.close();

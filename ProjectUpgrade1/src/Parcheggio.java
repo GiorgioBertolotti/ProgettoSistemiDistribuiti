@@ -1,149 +1,144 @@
-import java.io.DataInputStream;
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class Parcheggio implements Serializable {
+	private static final long serialVersionUID = 1L;
 	private int idParcheggio;
-	private int maxParcheggiatori;
 	private int posti;
 	private Map<Integer, Automobile> autoParcheggiate = new HashMap<>();
-	private int parcheggiatoriAttivi;
+	public Parcheggiatore[] parcheggiatori;
 	private int ticketNo;
 
-	public int occupaPosto() {
-		return --this.posti;
+	public Parcheggio(int idParcheggio, int numParcheggiatori, int posti) {
+		super();
+		this.idParcheggio = idParcheggio;
+		this.parcheggiatori = new Parcheggiatore[numParcheggiatori];
+		for (int i = 0; i < numParcheggiatori; i++) {
+			this.parcheggiatori[i] = new Parcheggiatore(i, this);
+		}
+		this.posti = posti;
 	}
 
-	public int liberaPosto() {
-		return ++this.posti;
+	public int postiLiberi() {
+		return this.posti - this.autoParcheggiate.size();
 	}
 
-	public int incrementaTicket() {
-		return ++this.ticketNo;
+	public int getNumParcheggiatori() {
+		return this.parcheggiatori.length;
 	}
 
 	public int getIdParcheggio() {
 		return idParcheggio;
 	}
 
-	public Parcheggio(int idParcheggio, int y, int posti) {
-		super();
-		this.idParcheggio = idParcheggio;
-		this.maxParcheggiatori = y;
-		this.posti = posti;
-	}
-
-	public void deposita() {
-		Parcheggiatore p = (Parcheggiatore) (Thread.currentThread());
-		synchronized (this) {
-			while (parcheggiatoriAttivi == maxParcheggiatori) {
-				System.out.println("Aspetto a parcheggiare " + p.getAutomobile().targa);
-				try {
-					wait();
-				} catch (InterruptedException e1) {
-					e1.printStackTrace();
+	public int deposita() {
+		Automobilista automobilista = (Automobilista) (Thread.currentThread());
+		int postiLiberi = this.posti - this.autoParcheggiate.size();
+		if (postiLiberi > 0) {
+			syncParcheggiatori();
+			int index = parcheggiatoreLibero();
+			synchronized (this) {
+				boolean detto = false;
+				while (index == -1) {
+					try {
+						if (!detto) {
+							System.out.println("I'm waiting for a parking attendant to be free to park the car.");
+							detto = true;
+						}
+						Thread.sleep(1000);
+						syncParcheggiatori();
+						index = parcheggiatoreLibero();
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
 				}
 			}
-			parcheggiatoriAttivi++;
-		}
-		System.out.println("Inizio a parcheggiare " + p.getAutomobile().targa);
-		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-		synchronized (autoParcheggiate) {
-			autoParcheggiate.put(p.getTicketNo(), p.getAutomobile());
-			System.out.println(p.getAutomobile().targa + " parcheggiata.");
-		}
-		synchronized (this) {
-			parcheggiatoriAttivi--;
-			notifyAll();
-		}
-	}
-
-	public void ritira() {
-		Parcheggiatore p = (Parcheggiatore) (Thread.currentThread());
-		synchronized (this) {
-			while (parcheggiatoriAttivi == maxParcheggiatori) {
-				System.out.println("Aspetto a ritirare il ticket " + p.getTicketNo());
-				try {
-					wait();
-				} catch (InterruptedException e1) {
-					e1.printStackTrace();
-				}
-			}
-			parcheggiatoriAttivi++;
-		}
-		System.out.println("Vado a ritirare l'auto con ticket " + p.getTicketNo());
-		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-		synchronized (autoParcheggiate) {
-			if (autoParcheggiate.containsKey(p.getTicketNo())) {
-				Automobile auto = autoParcheggiate.get(p.getTicketNo());
-				autoParcheggiate.remove(p.getTicketNo());
-				System.out.println("Ritirata l'auto con ticket " + p.getTicketNo() + ", la targa è " + auto.targa);
-			} else
-				System.out
-						.println("L'auto con ticket " + p.getTicketNo() + " non è parcheggiata in questo parcheggio.");
-		}
-		synchronized (this) {
-			parcheggiatoriAttivi--;
-			segnalaParcheggioDisponibile();
-			notifyAll();
-		}
-	}
-
-	synchronized public int depositaAuto(Automobile auto) {
-		if (posti > 0) {
-			Parcheggiatore parcheggiatore = new Parcheggiatore(this, auto, true, ticketNo);
-			parcheggiatore.start();
-			segnalaParcheggioOccupato();
-			return ticketNo++;
+			this.parcheggiatori[index].parcheggia();
+			this.autoParcheggiate.put(this.ticketNo, automobilista.getAuto());
+			int toReturn = this.ticketNo++;
+			inviaStato();
+			return toReturn;
 		} else {
-			System.out.println(auto.targa + " non parcheggiata, sono finiti i parcheggi.");
+			System.out.println(automobilista.getAuto().targa + " not parked, there are no more parkings.");
 			return -1;
 		}
 	}
 
-	public void ritiraAuto(int ticket) {
-		Parcheggiatore parcheggiatore = new Parcheggiatore(this, null, false, ticket);
-		parcheggiatore.start();
+	public void ritira() {
+		Automobilista automobilista = (Automobilista) (Thread.currentThread());
+		if (automobilista.getTicketNo() != null && this.autoParcheggiate.containsKey(automobilista.getTicketNo())) {
+			syncParcheggiatori();
+			int index = parcheggiatoreLibero();
+			synchronized (this) {
+				boolean detto = false;
+				while (index == -1) {
+					try {
+						if (!detto) {
+							System.out.println("I'm waiting for a parking attendant to be free to pick up the car.");
+							detto = true;
+						}
+						Thread.sleep(1000);
+						syncParcheggiatori();
+						index = parcheggiatoreLibero();
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+			this.parcheggiatori[index].ritira();
+			this.autoParcheggiate.remove(automobilista.getTicketNo());
+			inviaStato();
+			return;
+		} else {
+			System.out.println("Ticket not valid.");
+		}
 	}
 
-	public void segnalaParcheggioOccupato() {
-		inviaMessaggioSocket("parcheggioOccupato" + this.idParcheggio);
+	synchronized private int parcheggiatoreLibero() {
+		for (int i = 0; i < this.parcheggiatori.length; i++) {
+			if (this.parcheggiatori[i].isLibero())
+				return i;
+		}
+		return -1;
 	}
 
-	public void segnalaParcheggioDisponibile() {
-		inviaMessaggioSocket("parcheggioDisponibile" + this.idParcheggio);
-	}
-
-	private void inviaMessaggioSocket(String messaggio) {
+	private void syncParcheggiatori() {
 		try {
 			Socket socket = new Socket(InetAddress.getLocalHost(), 53535);
 			PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
-			stringOutput.write(messaggio);
+			stringOutput.write("getStatoParcheggiatori-" + this.idParcheggio);
 			stringOutput.flush();
-			DataInputStream in;
-			byte[] byteReceived = new byte[1000];
-			String messageString = "";
-			in = new DataInputStream(socket.getInputStream());
-			int bytesRead = 0;
-			bytesRead = in.read(byteReceived);
-			messageString += new String(byteReceived, 0, bytesRead);
-			System.out.println(messageString);
+			ObjectInputStream input = new ObjectInputStream(socket.getInputStream());
+			Object received = input.readObject();
 			stringOutput.close();
-			in.close();
+			input.close();
+			socket.close();
+			if (received instanceof Parcheggiatore[]) {
+				this.parcheggiatori = (Parcheggiatore[]) received;
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private void inviaStato() {
+		try {
+			Socket socket = new Socket(InetAddress.getLocalHost(), 53535);
+			PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
+			stringOutput.write("aggiornaStatoParcheggio");
+			stringOutput.flush();
+			Thread.sleep(500);
+			ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
+			objectOutput.writeObject(this);
+			objectOutput.flush();
+			stringOutput.close();
+			objectOutput.close();
 			socket.close();
 		} catch (Exception e) {
 			e.printStackTrace();

@@ -4,14 +4,17 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.util.List;
 
-public class Automobilista {
+public class Automobilista extends Thread {
 	private Automobile auto;
+	private Parcheggio parcheggio;
+	private Integer ticketNo;
 
 	public Automobilista(Automobile auto) {
 		super();
 		this.auto = auto;
 	}
 
+	@SuppressWarnings("unchecked")
 	public List<Parcheggio> richiediListaParcheggi() {
 		try {
 			Socket socket = new Socket(InetAddress.getLocalHost(), 53535);
@@ -37,11 +40,25 @@ public class Automobilista {
 		return auto;
 	}
 
-	public int parcheggia(Parcheggio parcheggio) {
-		return parcheggio.depositaAuto(this.auto);
+	public Integer getTicketNo() {
+		return ticketNo;
 	}
 
-	public void ritira(Parcheggio parcheggio, int ticket) {
-		parcheggio.ritiraAuto(ticket);
+	public void setParcheggio(Parcheggio parcheggio) {
+		this.parcheggio = parcheggio;
+	}
+
+	public void run() {
+		if (this.parcheggio == null) {
+			System.out.println("Please specify the parking.");
+			return;
+		}
+		ticketNo = this.parcheggio.deposita();
+		try {
+			Thread.sleep(3000);
+		} catch (Exception e) {
+		}
+		this.parcheggio.ritira();
+		this.ticketNo = null;
 	}
 }
