@@ -1,7 +1,11 @@
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.Base64;
 import java.util.List;
 
 public class Automobilista extends Thread {
@@ -21,10 +25,17 @@ public class Automobilista extends Thread {
 			PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
 			stringOutput.write("richiestaParcheggi");
 			stringOutput.flush();
-			ObjectInputStream input = new ObjectInputStream(socket.getInputStream());
-			Object received = input.readObject();
+			Thread.sleep(100);
+			DataInputStream in;
+			byte[] byteReceived = new byte[1000];
+			String messageString = "";
+			in = new DataInputStream(socket.getInputStream());
+			int bytesRead = 0;
+			bytesRead = in.read(byteReceived);
+			messageString += new String(byteReceived, 0, bytesRead);
+			Object received = fromString(messageString);
 			stringOutput.close();
-			input.close();
+			in.close();
 			socket.close();
 			if (received instanceof List<?>) {
 				return (List<Parcheggio>) received;
@@ -34,6 +45,14 @@ public class Automobilista extends Thread {
 			e.printStackTrace();
 			return null;
 		}
+	}
+
+	private Object fromString(String s) throws IOException, ClassNotFoundException {
+		byte[] data = Base64.getDecoder().decode(s);
+		ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data));
+		Object o = ois.readObject();
+		ois.close();
+		return o;
 	}
 
 	public Automobile getAuto() {

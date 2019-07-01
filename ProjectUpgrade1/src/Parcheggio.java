@@ -1,9 +1,15 @@
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -114,10 +120,16 @@ public class Parcheggio implements Serializable {
 			PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
 			stringOutput.write("getStatoParcheggiatori-" + this.idParcheggio);
 			stringOutput.flush();
-			ObjectInputStream input = new ObjectInputStream(socket.getInputStream());
-			Object received = input.readObject();
+			DataInputStream in;
+			byte[] byteReceived = new byte[1000];
+			String messageString = "";
+			in = new DataInputStream(socket.getInputStream());
+			int bytesRead = 0;
+			bytesRead = in.read(byteReceived);
+			messageString += new String(byteReceived, 0, bytesRead);
+			Object received = fromString(messageString);
 			stringOutput.close();
-			input.close();
+			in.close();
 			socket.close();
 			if (received instanceof Parcheggiatore[]) {
 				this.parcheggiatori = (Parcheggiatore[]) received;
@@ -133,16 +145,30 @@ public class Parcheggio implements Serializable {
 			PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
 			stringOutput.write("aggiornaStatoParcheggio");
 			stringOutput.flush();
-			Thread.sleep(500);
-			ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
-			objectOutput.writeObject(this);
-			objectOutput.flush();
-			stringOutput.close();
-			objectOutput.close();
+			Thread.sleep(300);
+			OutputStream outStream = socket.getOutputStream();
+			outStream.write(toBytes(this));
+			outStream.flush();
 			socket.close();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	private Object fromString(String s) throws IOException, ClassNotFoundException {
+		byte[] data = Base64.getDecoder().decode(s);
+		ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data));
+		Object o = ois.readObject();
+		ois.close();
+		return o;
+	}
+
+	private static byte[] toBytes(Serializable o) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(baos);
+		oos.writeObject(o);
+		oos.close();
+		return baos.toByteArray();
 	}
 
 	@Override

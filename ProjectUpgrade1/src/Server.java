@@ -1,111 +1,187 @@
-import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.Serializable;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 public class Server {
 
-	@SuppressWarnings("resource")
 	public static void main(String[] args) {
 		List<Parcheggio> parcheggi = new ArrayList<>();
 		for (int i = 0; i < 5; i++) {
 			parcheggi.add(new Parcheggio(i, 1, 5));
 		}
-		ServerSocket server = null;
 		try {
-			server = new ServerSocket(53535);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		if (server == null)
-			System.exit(-1);
-		System.out.println("Server started...");
-		while (true) {
-			try {
-				Socket socket = server.accept();
-				DataInputStream in;
-				byte[] byteReceived = new byte[1000];
-				String messageString = "";
-				in = new DataInputStream(socket.getInputStream());
-				int bytesRead = 0;
-				bytesRead = in.read(byteReceived);
-				messageString += new String(byteReceived, 0, bytesRead);
-				System.out.println("Received: " + messageString);
-				if (messageString.equals("richiestaParcheggi")) {
-					ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
-					List<Parcheggio> daRitornare = new ArrayList<>();
-					for (Parcheggio parcheggio : parcheggi) {
-						if (parcheggio.postiLiberi() > 0)
-							daRitornare.add(parcheggio);
+			Selector selector = Selector.open();
+			ServerSocketChannel serverSocket = ServerSocketChannel.open();
+			System.out.println("Server started...");
+			serverSocket.bind(new InetSocketAddress(53535));
+			serverSocket.configureBlocking(false);
+			serverSocket.register(selector, SelectionKey.OP_ACCEPT);
+
+			while (true) {
+				selector.select();
+				Set<SelectionKey> selectedKeys = selector.selectedKeys();
+				Iterator<SelectionKey> iter = selectedKeys.iterator();
+				while (iter.hasNext()) {
+					SelectionKey key = iter.next();
+					if (key.isAcceptable()) {
+						acceptClientRequest(selector, serverSocket);
 					}
-					objectOutput.writeObject(daRitornare);
-					objectOutput.flush();
-				} else if (messageString.contains("statoParcheggiatore")) {
-					try {
-						String[] splitted = messageString.split("-");
-						int idParcheggio = Integer.parseInt(splitted[1]);
-						int indexParcheggiatore = Integer.parseInt(splitted[2]);
-						boolean libero = splitted[3] == "1";
-						for (Parcheggio parcheggio : parcheggi) {
-							if (parcheggio.getIdParcheggio() == idParcheggio
-									&& parcheggio.getNumParcheggiatori() > indexParcheggiatore) {
-								parcheggio.parcheggiatori[indexParcheggiatore].setLibero(libero);
-							}
-						}
-						PrintWriter stringOutput = new PrintWriter(socket.getOutputStream(), true);
-						stringOutput.write("ricevuto");
-						stringOutput.flush();
-					} catch (Exception e) {
-						System.out.println("Command not valid.");
+					if (key.isReadable()) {
+						readClientBytes(key, parcheggi);
 					}
-				} else if (messageString.contains("getStatoParcheggiatori")) {
-					try {
-						String[] splitted = messageString.split("-");
-						int idParcheggio = Integer.parseInt(splitted[1]);
-						Parcheggiatore[] nuovoStato = null;
-						for (Parcheggio parcheggio : parcheggi) {
-							if (parcheggio.getIdParcheggio() == idParcheggio) {
-								nuovoStato = parcheggio.parcheggiatori;
-							}
-						}
-						if (nuovoStato != null) {
-							ObjectOutputStream objectOutput = new ObjectOutputStream(socket.getOutputStream());
-							objectOutput.writeObject(nuovoStato);
-							objectOutput.flush();
-						} else {
-							System.out.println("Command not valid.");
-						}
-					} catch (Exception e) {
-						System.out.println("Command not valid.");
-					}
-				} else if (messageString.equals("aggiornaStatoParcheggio")) {
-					try {
-						ObjectInputStream input = new ObjectInputStream(socket.getInputStream());
-						Object received = input.readObject();
-						if (received instanceof Parcheggio) {
-							Parcheggio nuovoStato = (Parcheggio) received;
-							for (int i = 0; i < parcheggi.size(); i++) {
-								if (parcheggi.get(i).getIdParcheggio() == nuovoStato.getIdParcheggio()) {
-									parcheggi.remove(i);
-									parcheggi.add(nuovoStato);
-									break;
-								}
-							}
-						}
-					} catch (Exception e) {
-						System.out.println("Command not recognized.");
-					}
+					iter.remove();
 				}
-				in.close();
-				socket.close();
+			}
+		} catch (Exception e) {
+		}
+	}
+
+	private static void acceptClientRequest(Selector selector, ServerSocketChannel serverSocket) throws IOException {
+		SocketChannel client = serverSocket.accept();
+		client.configureBlocking(false);
+		client.register(selector, SelectionKey.OP_READ);
+	}
+
+	private static void readClientBytes(SelectionKey key, List<Parcheggio> parcheggi) throws IOException {
+		SocketChannel client = (SocketChannel) key.channel();
+		try {
+			int BUFFER_SIZE = 256;
+			ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+			try {
+				if (client.read(buffer) == -1) {
+					client.close();
+					return;
+				}
 			} catch (Exception e) {
 				e.printStackTrace();
+				return;
 			}
+			buffer.flip();
+			Charset charset = Charset.forName("UTF-8");
+			CharsetDecoder decoder = charset.newDecoder();
+			CharBuffer charBuffer = decoder.decode(buffer);
+			String messageString = charBuffer.toString();
+			System.out.println("Received: " + messageString);
+			if (messageString.equals("richiestaParcheggi")) {
+				List<Parcheggio> daRitornare = new ArrayList<>();
+				for (Parcheggio parcheggio : parcheggi) {
+					if (parcheggio.postiLiberi() > 0)
+						daRitornare.add(parcheggio);
+				}
+				ByteBuffer writeBuffer = ByteBuffer.wrap(toString(daRitornare).getBytes(charset));
+				client.write(writeBuffer);
+			} else if (messageString.contains("statoParcheggiatore")) {
+				try {
+					String[] splitted = messageString.split("-");
+					int idParcheggio = Integer.parseInt(splitted[1]);
+					int indexParcheggiatore = Integer.parseInt(splitted[2]);
+					boolean libero = splitted[3] == "1";
+					for (Parcheggio parcheggio : parcheggi) {
+						if (parcheggio.getIdParcheggio() == idParcheggio
+								&& parcheggio.getNumParcheggiatori() > indexParcheggiatore) {
+							parcheggio.parcheggiatori[indexParcheggiatore].setLibero(libero);
+						}
+					}
+					ByteBuffer writeBuffer = ByteBuffer.wrap("ricevuto".getBytes(charset));
+					client.write(writeBuffer);
+				} catch (Exception e) {
+					System.out.println("Command not valid.");
+				}
+			} else if (messageString.contains("getStatoParcheggiatori")) {
+				try {
+					String[] splitted = messageString.split("-");
+					int idParcheggio = Integer.parseInt(splitted[1]);
+					Parcheggiatore[] nuovoStato = null;
+					for (Parcheggio parcheggio : parcheggi) {
+						if (parcheggio.getIdParcheggio() == idParcheggio) {
+							nuovoStato = parcheggio.parcheggiatori;
+						}
+					}
+					if (nuovoStato != null) {
+						ByteBuffer writeBuffer = ByteBuffer.wrap(toString(nuovoStato).getBytes(charset));
+						client.write(writeBuffer);
+					} else {
+						System.out.println("Command not valid.");
+					}
+				} catch (Exception e) {
+					System.out.println("Command not valid.");
+				}
+			} else if (messageString.equals("aggiornaStatoParcheggio")) {
+				try {
+					Thread.sleep(400);
+					ByteBuffer receivedBuffer = ByteBuffer.allocate(100000);
+					try {
+						if (client.read(receivedBuffer) == -1) {
+							client.close();
+							return;
+						}
+					} catch (Exception e) {
+						e.printStackTrace();
+						return;
+					}
+					receivedBuffer.flip();
+					Object received = fromString(receivedBuffer);
+					if (received instanceof Parcheggio) {
+						Parcheggio nuovoStato = (Parcheggio) received;
+						for (int i = 0; i < parcheggi.size(); i++) {
+							if (parcheggi.get(i).getIdParcheggio() == nuovoStato.getIdParcheggio()) {
+								parcheggi.remove(i);
+								parcheggi.add(nuovoStato);
+								break;
+							}
+						}
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+					System.out.println("Command not recognized.");
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			client.close();
 		}
+	}
+
+	private static Object fromString(ByteBuffer buf) throws IOException, ClassNotFoundException {
+		byte[] data = new byte[buf.remaining()];
+		buf.get(data);
+		ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(data));
+		Object o = ois.readObject();
+		ois.close();
+		return o;
+	}
+
+	private static String toString(Serializable o) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(baos);
+		oos.writeObject(o);
+		oos.close();
+		return Base64.getEncoder().encodeToString(baos.toByteArray());
+	}
+
+	private static String toString(List<Parcheggio> l) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(baos);
+		oos.writeObject(l);
+		oos.close();
+		return Base64.getEncoder().encodeToString(baos.toByteArray());
 	}
 }
